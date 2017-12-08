@@ -1,0 +1,4 @@
+node_modules
+taggun-cache/*
+results.*
+.env

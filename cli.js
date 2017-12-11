@@ -2,6 +2,9 @@ var path = require("path");
 var fs = require("fs");
 var request = require("request");
 var hashFiles = require('hash-files');
+var csv = require("fast-csv");
+var moment = require('moment');
+var mime = require('mime');
 
 if (process.argv.length < 3) {
     console.error("Usage: node cli.js <taggunApiKey> <exiftool-output.csv>");
@@ -12,21 +15,13 @@ if (process.argv.length < 3) {
 var taggunCachePath = path.join(__dirname, "taggun-cache");
 var taggunApiKey = process.argv[2];
 
-var csv = require("fast-csv");
-
 var csvDataFilePath = process.argv[3];
 console.log("csvDataFilePath", csvDataFilePath);
 var sourceFilesDirectory = path.dirname(csvDataFilePath);
 console.log("sourceFilesDirectory", sourceFilesDirectory);
 
-/*
-var receiptPath = process.argv[2];
-console.log("receiptPath", receiptPath);
-*/
-
 async function requestTaggunMetadataJson(receiptPath) {
 
-    var mime = require('mime');
     var filename = path.basename(receiptPath);
     var contentType = mime.lookup(receiptPath);
 
@@ -79,6 +74,9 @@ async function requestTaggunMetadataJsonIfNotAlreadyCached(receiptPath) {
             if (!fs.existsSync(taggunMetadataJsonPath)) {
 
                 var taggunMetadataJson = await requestTaggunMetadataJson(receiptPath);
+                var taggunMetadata = JSON.parse(taggunMetadataJson);
+                taggunMetadata.contentSha1Hash = hash;
+                taggunMetadataJson = JSON.stringify(taggunMetadata);
                 //console.log('taggunMetadataJson', taggunMetadataJson);
 
                 console.log('Storing taggunMetadataJson json');
@@ -95,6 +93,10 @@ async function requestTaggunMetadataJsonIfNotAlreadyCached(receiptPath) {
             } else {
                 console.log('Taggun metadata already cached');
                 var taggunMetadataJson = fs.readFileSync(taggunMetadataJsonPath);
+                var taggunMetadata = JSON.parse(taggunMetadataJson);
+                taggunMetadata.contentSha1Hash = hash;
+                taggunMetadataJson = JSON.stringify(taggunMetadata);
+                //console.log('taggunMetadataJson', taggunMetadataJson);
                 resolve(taggunMetadataJson);
             }
 
@@ -141,19 +143,32 @@ async function getReconciliationMetadata(csvRows, sourceFilesDirectory) {
         var taggunMetadataJson = await requestTaggunMetadataJsonIfNotAlreadyCached(receiptPath);
         var taggunMetadata = JSON.parse(taggunMetadataJson);
 
+        var date = null;
+        if (taggunMetadata.date && taggunMetadata.date.data) {
+            date = moment(taggunMetadata.date.data).format("YYYY-MM-DD");
+        }
+
+        var contentType = mime.lookup(receiptPath);
+        var filename = path.basename(relativePath);
+        var directory = path.dirname(relativePath);
+
         reconciliationMetadata.push({
-            relativePath: relativePath,
+            directory: directory,
+            filename: filename,
+            date: date,
+            dateText: taggunMetadata.date ? taggunMetadata.date.text : '',
             totalAmount: taggunMetadata.totalAmount ? taggunMetadata.totalAmount.data : '',
             totalAmountText: taggunMetadata.totalAmount ? taggunMetadata.totalAmount.text : '',
             taxAmount: taggunMetadata.taxAmount ? taggunMetadata.taxAmount.data : '',
             taxAmountText: taggunMetadata.taxAmount ? taggunMetadata.taxAmount.text : '',
-            date: taggunMetadata.date ? taggunMetadata.date.data : '',
-            dateText: taggunMetadata.date ? taggunMetadata.date.text : '',
             merchantName: taggunMetadata.merchantName ? taggunMetadata.merchantName.data : '',
             merchantNameText: taggunMetadata.merchantName ? taggunMetadata.merchantName.text : '',
             merchantAddress: taggunMetadata.merchantAddress ? taggunMetadata.merchantAddress.data : '',
             merchantAddressText: taggunMetadata.merchantAddress ? taggunMetadata.merchantAddress.text : '',
             text: taggunMetadata.text ? taggunMetadata.text.text : '',
+            contentSha1Hash: taggunMetadata.contentSha1Hash,
+            contentType: contentType,
+            path: relativePath,
             //taggunMetadata: taggunMetadata,
             //csvRow: csvRow,
         });
@@ -175,18 +190,22 @@ async function getReconciliationMetadata(csvRows, sourceFilesDirectory) {
             .writeToPath("./results.csv", reconciliationMetadata, {
                 quoteColumns: true,
                 headers: [
-                    'relativePath',
+                    'directory',
+                    'filename',
+                    'date',
+                    'dateText',
                     'totalAmount',
                     'totalAmountText',
                     'taxAmount',
                     'taxAmountText',
-                    'date',
-                    'dateText',
                     'merchantName',
                     'merchantNameText',
                     'merchantAddress',
                     'merchantAddressText',
                     'text',
+                    'contentSha1Hash',
+                    'contentType',
+                    'path',
                 ]
             })
             .on("finish", function () {

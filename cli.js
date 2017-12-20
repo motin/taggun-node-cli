@@ -161,6 +161,9 @@ async function getReconciliationMetadata(csvRows, sourceFilesDirectory) {
         var filename = path.basename(relativePath);
         var directory = path.dirname(relativePath);
 
+        var stats = fs.statSync(receiptPath);
+        //console.log('stats', stats);
+
         reconciliationMetadata.push({
             directory: directory,
             filename: filename,
@@ -178,6 +181,9 @@ async function getReconciliationMetadata(csvRows, sourceFilesDirectory) {
             contentSha1Hash: taggunMetadata.contentSha1Hash,
             contentType: contentType,
             path: relativePath,
+            created: moment(stats.birthtime).format("YYYY-MM-DD HH:mm"),
+            modified: moment(stats.mtime).format("YYYY-MM-DD HH:mm"),
+            ctime: moment(stats.ctime).format("YYYY-MM-DD HH:mm"),
             ocrErrorOccurred: taggunMetadata.error ? 1 : 0,
             //taggunMetadata: taggunMetadata,
             //csvRow: csvRow,

@@ -44,7 +44,7 @@ async function requestTaggunMetadataJson(receiptPath) {
         }, (err, httpResponse, body) => {
             if (err) {
                 console.error('Upload failed');
-                reject(err);
+                return reject(err);
             }
             console.log('Upload successful!');
             resolve(body);
@@ -84,7 +84,7 @@ async function requestTaggunMetadataJsonIfNotAlreadyCached(receiptPath) {
                     if (resultsWriteErr) {
                         console.error(`Couldn't write data to ${taggunMetadataJsonPath}!`);
                         console.error(resultsWriteErr);
-                        reject(resultsWriteErr);
+                        return reject(resultsWriteErr);
                     }
                     resolve(taggunMetadataJson);
                 });
@@ -140,8 +140,17 @@ async function getReconciliationMetadata(csvRows, sourceFilesDirectory) {
         //console.log('relativePath', relativePath, csvRow);
         var receiptPath = path.join(sourceFilesDirectory, relativePath);
 
-        var taggunMetadataJson = await requestTaggunMetadataJsonIfNotAlreadyCached(receiptPath);
-        var taggunMetadata = JSON.parse(taggunMetadataJson);
+        let taggunMetadata;
+        try {
+            const taggunMetadataJson = await requestTaggunMetadataJsonIfNotAlreadyCached(receiptPath);
+            taggunMetadata = JSON.parse(taggunMetadataJson);
+        } catch (err) {
+            // return error info in taggun metadata on error
+            taggunMetadata = {
+                error: err,
+            };
+        }
+        //console.log('taggunMetadata.error', taggunMetadata.error);
 
         var date = null;
         if (taggunMetadata.date && taggunMetadata.date.data) {
@@ -169,6 +178,7 @@ async function getReconciliationMetadata(csvRows, sourceFilesDirectory) {
             contentSha1Hash: taggunMetadata.contentSha1Hash,
             contentType: contentType,
             path: relativePath,
+            ocrErrorOccurred: taggunMetadata.error ? 1 : 0,
             //taggunMetadata: taggunMetadata,
             //csvRow: csvRow,
         });
